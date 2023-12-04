@@ -9,6 +9,7 @@ def multiplicative_weights_update(meta_games, num_iterations, step_size=None, al
     :param alternate: Make the updates alternate between players.
     :return: A mixed strategy profile in a list.
     """
+    #TODO: output averaged strategies rather than pointwise.
     num_players = len(meta_games)
     n, m = np.shape(meta_games[0])
 
@@ -37,6 +38,7 @@ def multiplicative_weights_update(meta_games, num_iterations, step_size=None, al
         weights[player] /= np.sum(weights[player])
 
     return weights
+
 
 
 # meta_games = [np.array([[8,6], [-8,7]]), np.array([[6,0], [-8,7]])]
