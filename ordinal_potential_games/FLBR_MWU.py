@@ -1,6 +1,6 @@
 import numpy as np
 
-def FLBR_multiplicative_weights_update(meta_games, num_iterations, step_size, alternate=False):
+def FLBR_multiplicative_weights_update(meta_games, num_iterations, step_size=None, alternate=False):
     num_players = len(meta_games)
     n, m = np.shape(meta_games[0])
 
@@ -9,7 +9,7 @@ def FLBR_multiplicative_weights_update(meta_games, num_iterations, step_size, al
 
     last_weights = [np.ones(n)/n, np.ones(m)/m]
     weights = [np.ones(n) / n, np.ones(m) / m]
-    print(step_size)
+
     for i in range(num_iterations):
         if alternate:
             used_weights = weights

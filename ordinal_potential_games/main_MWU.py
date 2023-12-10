@@ -9,7 +9,6 @@ def main():
     dim = 2
     num_iterations = 50
     potential, games = runner(dim)
-    games.append([np.array([[2, -1], [-1, 4]]), np.array([[-2, 1], [1, -4]])])
     print("The potential is \n", potential)
     for i, game in enumerate(games):
         print("###### Running the game {} ######".format(i))

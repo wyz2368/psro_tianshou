@@ -1,11 +1,11 @@
 import numpy as np
 
-def optimistic_multiplicative_weights_update(meta_games, num_iterations, step_size, alternate=False):
+def optimistic_multiplicative_weights_update(meta_games, num_iterations, step_size=None, alternate=False):
     """
     Implement the optimistic multiplicative weights update for two-player games only.
     :param meta_games: two lists of payoffs, one for each player.
-    :param num_iterations: Number of iterations for MWU.
-    :param step_size: The value of step size for MWU.
+    :param num_iterations: Number of iterations for OMWU.
+    :param step_size: The value of step size for OMWU.
     :param alternate: Make the updates alternate between players.
     :return: A mixed strategy profile in a list.
     """
