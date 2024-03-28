@@ -24,7 +24,6 @@ class MultiAgentPolicyManager_PSRO(MultiAgentPolicyManager):
     def set_eps(self, eps):
         self.policies[self.learning_player_string].set_eps(eps)
 
-
     # TODO: how to combine sampling strategies with this class?
     def update_learning_players(self, new_learning_players_id):
         self.learning_players_id = new_learning_players_id
@@ -64,7 +63,7 @@ class MultiAgentPolicyManager_PSRO(MultiAgentPolicyManager):
         return policies
 
     def learn(self, batch, *args, **kwargs): #TODO: See if we can set master policy training 1 episode per time and updates periodically.
-                                            #TODO: Go and see specific algorithms like DQN.
+
         """
         Only update the learning player's policy.
         """

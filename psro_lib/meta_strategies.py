@@ -124,7 +124,10 @@ def general_nash_strategy(solver, return_joint=False, mode='one', game=None, che
 
     # print(meta_games)
     # Change the "lcp" to "gnm" for games with more than 2 players.
-    equilibria = pygbt_solve_matrix_games(meta_games, method="lcp", mode=mode)
+    if len(meta_games) == 2:
+        equilibria = pygbt_solve_matrix_games(meta_games, method="lcp", mode=mode)
+    else:
+        equilibria = pygbt_solve_matrix_games(meta_games, method="gnm", mode=mode)
 
     # print("NE:", equilibria)
     normalized_eqa = []
@@ -145,6 +148,7 @@ def general_nash_strategy(solver, return_joint=False, mode='one', game=None, che
         else:
             joint_strategies = get_joint_strategy_from_marginals(normalized_eqa[0])
             return normalized_eqa[0], joint_strategies
+
 
 def prd_strategy(solver, return_joint=False):
   """Computes Projected Replicator Dynamics strategies.

@@ -2,6 +2,7 @@
 
 import numpy as np
 
+# TODO: Where is this used?
 DEFAULT_STRATEGY_SELECTION_METHOD = "probabilistic"
 
 # Constant, specifying the threshold below which probabilities are considered 0.

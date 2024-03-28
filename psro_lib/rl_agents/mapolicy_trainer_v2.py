@@ -26,12 +26,14 @@ class MAPolicyTrainer_v2():
         self.test_in_train = test_in_train
 
         # Training parameters
+        # TODO: make this non-hard-coding.
         self.best_response_kwargs = best_response_kwargs
         self.iter_counter = 0 # Num of train steps
         self.step_counter = 0 # Num of steps an agent takes in the env.
-        self.epsilon_start = 1.0 # Initial exploration rate.
-        self.epsilon_end = 0.1 # End exploration rate.
-        self.epsilon_decay_duration = int(1e6)
+
+        self.epsilon_start = self.best_response_kwargs["epsilon_start"] # Initial exploration rate.
+        self.epsilon_end = self.best_response_kwargs["epsilon_end"] # End exploration rate.
+        self.epsilon_decay_duration = int(self.best_response_kwargs["epsilon_decay_duration"])
 
     def get_epsilon(self, is_evaluation, power=1.0):
         """Returns the evaluation or decayed epsilon value."""
@@ -75,10 +77,6 @@ class MAPolicyTrainer_v2():
         """
         self.iter_counter = 0  # Num of train steps
         self.step_counter = 0  # Num of steps an agent takes in the env.
-        self.epsilon_start = 1.0  # Initial exploration rate.
-        self.epsilon_end = 0.1  # End exploration rate.
-        self.epsilon_decay_duration = int(1e6)
-
         self.reset_collector()
 
     def reset_collector(self):
@@ -89,9 +87,30 @@ class MAPolicyTrainer_v2():
             self.train_collector.reset()
             self.test_collector.reset()
 
-    def train_one_step(self, master_policy, test_freq=100):
+    def train_one_step(self, master_policy, n_episode=1, test_freq=100, updater_per_episode=True):
+        # One step of training:
+        # (1) Collect n episodes;
+        # (2) Test the current policy if test_in_train;
+        # (3) Update a policy and return loss.
+
         master_policy.set_eps(self.get_epsilon(is_evaluation=False))
-        collect_result = self.train_collector.collect(n_episode=1)
+        collect_result = self.train_collector.collect(n_episode=n_episode)
+        # collect_result = {
+        #     "n/ep": episode_count,
+        #     "n/st": step_count,
+        #     "rews": rews,
+        #     "lens": lens,
+        #     "idxs": idxs,
+        #     "rew": rew_mean,
+        #     "len": len_mean,
+        #     "rew_std": rew_std,
+        #     "len_std": len_std,
+        # } Tianshou 0.5.1
+        self.step_counter += collect_result["n/st"]
+
+        if self.step_counter <= self.best_response_kwargs["min_buffer_size_to_learn"]:
+            return "C", None, None
+
 
         if self.test_in_train and self.iter_counter % test_freq == 0:
             master_policy.set_eps(self.get_epsilon(is_evaluation=True))
@@ -101,9 +120,16 @@ class MAPolicyTrainer_v2():
         else:
             test_result = None
 
-        # Update a policy for every colloection.
-        losses = master_policy.update(self.best_response_kwargs["batch_size"],
-                                      self.train_collector.buffer)
+        # Update a policy for every collection or learn_every steps.
+        if updater_per_episode:
+            losses = master_policy.update(self.best_response_kwargs["batch_size"],
+                                          self.train_collector.buffer)
+        else:
+            if self.step_counter % self.best_response_kwargs["learn_every"] == 0:
+                losses = master_policy.update(self.best_response_kwargs["batch_size"],
+                                              self.train_collector.buffer)
+            else:
+                losses = "Not update"
         self.iter_counter += 1
 
         return losses, collect_result, test_result
@@ -120,6 +146,9 @@ class MAPolicyTrainer_v2():
             self.update_policy_in_collector(new_master_policy=master_policy)
 
         losses, train_result, test_result = self.train_one_step(master_policy)
+        if train_result is None:
+            return losses, train_result, None, None
+
         train_rew = train_result['rews'].mean(axis=0)[master_policy.learning_players_id]
         if test_result is not None:
             test_rew = test_result['rews'].mean(axis=0)[master_policy.learning_players_id]

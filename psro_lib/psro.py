@@ -11,18 +11,15 @@ from psro_lib import utils
 # from psro_lib.rl_agents.rl_factory import RandomPolicy
 from tianshou.policy import RandomPolicy
 
-
+# This allows implementation of rectified Nash.
 TRAIN_TARGET_SELECTORS = {
     "": None,
     "rectified": strategy_selectors.rectified_selector,
 }
 
-
 class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
-  """A general implementation PSRO.
-
-  PSRO is the algorithm described in (Lanctot et Al., 2017,
-  https://arxiv.org/pdf/1711.00832.pdf ).
+  """
+  A general implementation PSRO.
   """
 
   def __init__(self,
@@ -31,10 +28,8 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
                sims_per_entry,
                initial_policies=None,
                rectifier="",
-               training_strategy_selector=None,
                meta_strategy_method="prd",
                sample_from_marginals=False,
-               number_policies_selected=1,
                **kwargs):
     """Initialize the PSRO solver.
 
@@ -51,16 +46,6 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
               - "" or None: Train against potentially all strategies.
               - "rectified": Train only against strategies beaten by current
                 strategy.
-      training_strategy_selector: Callable taking (PSROSolver,
-        'number_policies_selected') and returning a list of a list of selected
-        strategies to train from - this usually means copying weights and
-        rectifying with respect to the selected strategy's performance (One list
-        entry per player), or string selecting pre-implemented methods.
-        String value can be:
-              - "probabilistic": randomly selects 'number_policies_selected'
-                with probabilities determined by the meta strategies.
-              - "rectified": only selects strategies that have nonzero chance of
-                being selected.
       meta_strategy_method: String or callable taking a GenPSROSolver object and
         returning two lists ; one list of meta strategies (One list entry per
         player), and one list of joint strategies.
@@ -73,12 +58,6 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
                 Al.
       sample_from_marginals: A boolean, specifying whether to sample from
         marginal (True) or joint (False) meta-strategy distributions.
-      number_policies_selected: Number of policies to return for each player.
-
-      n_noisy_copies: Number of noisy copies of each agent after training. 0 to
-        ignore this.
-      alpha_noise: lower bound on alpha noise value (Mixture amplitude.)
-      beta_noise: lower bound on beta noise value (Softmax temperature.)
       **kwargs: kwargs for meta strategy computation and training strategy
         selection.
     """
@@ -101,20 +80,20 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
         oracle,
         initial_policies,
         meta_strategy_method,
-        training_strategy_selector,
-        number_policies_selected=number_policies_selected,
         **kwargs)
 
-
-
   def _initialize_policy(self, initial_policies):
+    """
+    Initialize some strategies for PSRO. If initial_policies is not given,
+    then fill with random strategies.
+    """
     if self.symmetric_game:
       self._policies = [[]]
       self._new_policies = [
           (
               [initial_policies[0]]
               if initial_policies
-    else [RandomPolicy()] #TODO: Check if random policy needs input.
+    else [RandomPolicy()] #TODO: Check if random policy needs input. Should it match a particular game.
           )
       ]
     else:
@@ -129,6 +108,10 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
       ]
 
   def _initialize_game_state(self):
+    """
+    Initialize the empirical game, simulting the profiles given by initial strategies.
+    The empirical game is a list of payoff matrix represented by numpy array, one for each player.
+    """
     effective_payoff_size = self._game_num_players
     self._meta_games = [
         np.array(utils.empty_list_generator(effective_payoff_size))
@@ -137,7 +120,7 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
     self.update_empirical_gamestate(seed=None)
 
   def update_meta_strategies(self):
-    """Recomputes the current meta strategy of each player.
+    """Recomputes the current meta strategy (best response target) of each player.
 
     Given new payoff tables, we call self._meta_strategy_method to update the
     meta-probabilities.
@@ -180,7 +163,7 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
                                 probabilities_of_playing_policies,
                                 restrict_target_training_bool,
                                 epsilon=1e-12):
-    """Rectifies training.
+    """Rectifies training (Unused).
 
     Args:
       current_player: the current player.
@@ -216,8 +199,10 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
       return probability
 
   def update_agents(self):
-    """Updates policies for each player at the same time by calling the oracle.
+    """
+    Updates policies for each player at the same time by calling the oracle.
     The resulting policies are appended to self._new_policies.
+    (This function is significantly different from the original.)
     """
 
     (sample_strategy,
@@ -232,12 +217,15 @@ class PSROSolver(abstract_meta_trainer.AbstractMetaTrainer):
         self._num_players = self._game_num_players
 
     # List of List of new policies (One list per player) #TODO: check the oracle.
+    # ===================================
+    # The oracle is given by Tianshou.
+    # ===================================
     self._new_policies = self._oracle(env=self._game,
                                       old_policies=total_policies,
                                       meta_probabilities=probabilities_of_playing_policies,
                                       strategy_sampler=sample_strategy,
-                                      copy_from_prev=True)
-
+                                      copy_from_prev=False)
+    # This is the form of self._new_policies.
     # self._new_policies = [[RandomPolicy()], [RandomPolicy()]]
 
     if self.symmetric_game:

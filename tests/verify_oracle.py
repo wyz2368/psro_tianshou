@@ -1,13 +1,11 @@
 import gymnasium
 import numpy as np
 
-from psro_lib.rl_agents.utils import get_env_factory
-from psro_lib.strategy_selectors import TRAINING_STRATEGY_SELECTORS
 from psro_lib.rl_agents.rl_oracle import RLOracle, freeze_all
 from psro_lib.rl_agents.mapolicy_trainer_v2 import MAPolicyTrainer_v2
 from psro_lib.rl_agents.rl_factory import generate_agent_class
 from psro_lib.utils import sample_strategy_marginal
-from psro_lib.game_factory import games
+from psro_lib.game_factory import GAMES, get_env_factory
 
 from tianshou.policy import RandomPolicy
 from tianshou.policy import MultiAgentPolicyManager
@@ -32,7 +30,7 @@ def print_params(policy):
 
 
 # env = get_env_factory("tictactoe_v3")()
-env = games["tictactoe_v3"]
+env = GAMES["tictactoe_v3"]
 
 observation_space = (
         env.observation_space["observation"]

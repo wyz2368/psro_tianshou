@@ -18,5 +18,6 @@ def main():
         print("MWU weights:", weights)
         print("NE:", ne)
 
-main()
+if __name__ == "__main__":
+    main()
 

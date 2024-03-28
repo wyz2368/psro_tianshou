@@ -1,19 +1,19 @@
 import numpy as np
 from psro_lib import meta_strategies
-from psro_lib import strategy_selectors
 from psro_lib.utils import init_logger
-from psro_lib.rl_agents.utils import get_env_factory
-from psro_lib.rl_agents.master_policy import MultiAgentPolicyManager_PSRO
+from psro_lib.game_factory import get_env_factory
+# TODO: Check if the following works.
+# from psro_lib.rl_agents.master_policy import MultiAgentPolicyManager_PSRO
 
 from tianshou.data import Collector
 from tianshou.env import DummyVectorEnv, SubprocVectorEnv
 from tianshou.policy.multiagent.mapolicy import MultiAgentPolicyManager
 
+from shimmy.openspiel_compatibility import OpenSpielCompatibilityV0
 
-
-
-_DEFAULT_STRATEGY_SELECTION_METHOD = "probabilistic"
 _DEFAULT_META_STRATEGY_METHOD = "prd"
+
+#TODO: Add comments to the form of returned rewards.
 
 
 def _process_string_or_callable(string_or_callable, dictionary):
@@ -46,30 +46,22 @@ def _process_string_or_callable(string_or_callable, dictionary):
 
 
 class AbstractMetaTrainer(object):
-  """Abstract class implementing meta trainers.
-
-  If a trainer is something that computes a best response to given environment &
-  agents, a meta trainer will compute which best responses to compute (Against
-  what, how, etc)
-  This class can support PBT, Hyperparameter Evolution, etc.
   """
-
-  # pylint:disable=dangerous-default-value
+  Abstract class implementing PSRO trainers.
+  """
   def __init__(self,
                game,
                oracle,
                initial_policies=None,
                meta_strategy_method=_DEFAULT_META_STRATEGY_METHOD,
-               training_strategy_selector=_DEFAULT_STRATEGY_SELECTION_METHOD,
                symmetric_game=False,
-               number_policies_selected=1,
                checkpoint_dir=None,
                dummy_env=True,
                **kwargs):
     """Abstract Initialization for meta trainers.
 
     Args:
-      game: A PettingZoo Wrapper object.
+      game: A tianshou.env.PettingZoo Wrapper object.
       oracle: An oracle object.
       initial_policies: A list of initial policies, to set up a default for
         training. Resorts to tabular policies if not set.
@@ -81,20 +73,10 @@ class AbstractMetaTrainer(object):
                 games.
               - "prd": Projected Replicator Dynamics, as described in Lanctot et
                 Al.
-      training_strategy_selector: A callable or a string. If a callable, takes
-        as arguments: - An instance of `PSROSolver`, - a
-          `number_policies_selected` integer. and returning a list of
-          `num_players` lists of selected policies to train from.
-        When a string, supported values are:
-              - "probabilistic": randomly selects 'number_policies_selected'
-                with probabilities determined by the meta strategies.
-      symmetric_game: Whether to consider the current game as symmetric (True)
-        game or not (False).
-      number_policies_selected: Maximum number of new policies to train for each
-        player at each PSRO iteration.
       **kwargs: kwargs for meta strategy computation and training strategy
         selection
     """
+
     self._iterations = 0
     self._game = game
     self._oracle = oracle
@@ -104,7 +86,17 @@ class AbstractMetaTrainer(object):
     # Tianshou
     self.logger = init_logger(logger_name=__name__, checkpoint_dir=checkpoint_dir)
     self.dummy_env = dummy_env
-    env_name = self._game.env.metadata["name"]
+
+    # if isinstance(self._game, OpenSpielCompatibilityV0):
+    #   env_name = self._game.game_name
+    # else:
+    #   env_name = self._game.env.metadata["name"]
+    # env_name = "kuhn_poker"
+    if hasattr(self._game.env, 'game_name'):
+      env_name = self._game.env.game_name
+    else:
+      env_name = self._game.env.metadata["name"]
+
     if self.dummy_env:
       self.test_envs = DummyVectorEnv([get_env_factory(env_name)])
     else:
@@ -114,14 +106,8 @@ class AbstractMetaTrainer(object):
     self.symmetric_game = symmetric_game
     self._num_players = 1 if symmetric_game else self._num_players
 
-    self._number_policies_selected = number_policies_selected
-
     meta_strategy_method = _process_string_or_callable(
         meta_strategy_method, meta_strategies.META_STRATEGY_METHODS)
-
-    self._training_strategy_selector = _process_string_or_callable(
-        training_strategy_selector,
-        strategy_selectors.TRAINING_STRATEGY_SELECTORS)
 
     self._meta_strategy_method = meta_strategy_method
     self._kwargs = kwargs
@@ -140,16 +126,18 @@ class AbstractMetaTrainer(object):
 
   def iteration(self, seed=None):
     """Main trainer loop.
-
     Args:
       seed: Seed for random BR noise generation.
     """
     self._iterations += 1
-    self.update_agents()  # Generate new, Best Response agents via oracle.
-    self.update_empirical_gamestate(seed=seed)  # Update gamestate matrix.
+    self.update_agents()  # Generate new best responses via oracle.
+    self.update_empirical_gamestate(seed=seed)  # Fill in missing entries of the empirical game.
     self.update_meta_strategies()  # Compute meta strategy (e.g. Nash)
 
   def update_meta_strategies(self):
+    """
+    Update the best response target given by an MSS.
+    """
     self._meta_strategy_probabilities = self._meta_strategy_method(self)
     if self.symmetric_game:
       self._meta_strategy_probabilities = [self._meta_strategy_probabilities[0]]
@@ -173,16 +161,21 @@ class AbstractMetaTrainer(object):
     Returns:
       Average episode return over num episodes.
     """
+    # Create a Tianshou multiagent policy.
+    #TODO: Can we build one master policy and just update its policies?
     master_policy = MultiAgentPolicyManager(policies=policies, env=self._game)
+    # Reset the simulator.
     self.test_envs.reset()
+    # Create a Tianshou collector to sample trajectories.
     test_collector = Collector(master_policy, self.test_envs)
+    # Rollout.
     collect_result = test_collector.collect(n_episode=num_episodes)
-    return collect_result["rews"].mean(axis=0)
+    return collect_result["rews"].mean(axis=0) #
 
   #TODO: check collector behavior for multi-agent.
 
   def get_meta_strategies(self):
-    """Returns the Nash Equilibrium distribution on meta game matrix."""
+    """Returns the current best response target."""
     meta_strategy_probabilities = self._meta_strategy_probabilities
     if self.symmetric_game:
       meta_strategy_probabilities = (self._game_num_players *
@@ -203,31 +196,6 @@ class AbstractMetaTrainer(object):
 
   def get_kwargs(self):
     return self._kwargs
-
-  ## From Yongzhao's Repo##
-  def update_meta_strategy_method(self, new_meta_str_method=None):
-    """
-    Update meta-strategy method and corresponding name.
-    :param new_meta_str_method: new meta-strategy method.
-    :return:
-    """
-    if new_meta_str_method is not None:
-      # meta_strategy alias and name not corrherent
-      if '_strategy' in new_meta_str_method:
-        new_meta_str_method = new_meta_str_method[:new_meta_str_method.index('_strategy')]
-      self._meta_strategy_method = _process_string_or_callable(new_meta_str_method, meta_strategies.META_STRATEGY_METHODS)
-      self.logger.info("Using {} as strategy method.".format(self._meta_strategy_method.__name__))
-      self._meta_strategy_method_name = self._meta_strategy_method.__name__
-      self.update_meta_strategies()  # Compute meta strategy (e.g. Nash)
-
-      self.update_meta_strategies()
-
-  def get_meta_strategy_method(self):
-    """
-    Return the name and the function of current meta-strategy method.
-    :return:
-    """
-    return self._meta_strategy_method_name, self._meta_strategy_method
 
   def get_nash_strategies(self):
     """Returns the nash meta-strategy distribution on meta game matrix. When other meta strategies in play, nash strategy is still needed for evaluation
